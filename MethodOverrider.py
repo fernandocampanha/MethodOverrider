@@ -2,7 +2,6 @@ from burp import IBurpExtender
 from burp import IHttpRequestResponse
 from burp import IContextMenuFactory
 from burp import IContextMenuInvocation
-from java.util import ArrayList
 from javax.swing import JMenuItem
 from burp import IHttpService
 from threading import Thread
@@ -25,8 +24,8 @@ class BurpExtender(IBurpExtender, IHttpRequestResponse, IHttpService, IHttpListe
 		
 		self.parameters = ['_method', 'method', 'X-Http-Method-Override', 'X-HTTP-Method', 'X-Method-Override']
 
-		# self.status = [200, 201, 301, 302, 307, 308, 401, 403, 405, 501]
-		self.status = [200, 201, 301, 302, 307, 308, 501]
+		self.status = [200, 201, 301, 302, 307, 308, 400, 401, 403, 404, 405, 501]
+		# self.status = [200, 201, 301, 302, 307, 308, 501]
 
 		self.targets = []
 
@@ -48,8 +47,8 @@ class BurpExtender(IBurpExtender, IHttpRequestResponse, IHttpService, IHttpListe
 		
 		if(messageIsRequest):
 
-			print(self.helpers.analyzeRequest(messageInfo.getRequest()).getHeaders()[0].split()[1])
-			val = messageInfo.getHttpService().getProtocol() + "://" + messageInfo.getHttpService().getHost() + ":" + str(messageInfo.getHttpService().getPort())
+			path = str(self.helpers.analyzeRequest(messageInfo.getRequest()).getHeaders()[0].split()[1])
+			val = messageInfo.getHttpService().getProtocol() + "://" + messageInfo.getHttpService().getHost() + ":" + str(messageInfo.getHttpService().getPort()) + path
 
 			if(val in self.targets):
 				return
@@ -70,7 +69,6 @@ class BurpExtender(IBurpExtender, IHttpRequestResponse, IHttpService, IHttpListe
 	def analyze_response(self, result, method):
 
 		new_response = self.helpers.analyzeResponse(result.getResponse())
-		# print(self.helpers.bytesToString(result.getResponse()))
 		status_code = new_response.getStatusCode()
 
 		# Verify if the status code has changed
@@ -83,17 +81,17 @@ class BurpExtender(IBurpExtender, IHttpRequestResponse, IHttpService, IHttpListe
 
 		# Verify if the size of response has changed
 
-		# print(len(new_response.getHeaders()))
-
-			#try:
-
-				# print(len(result.getResponse()[new_response.getBodyOffset():]) + len(new_response.getHeaders()))
-			#	print(len(result.getResponse()))
-			#except:
-
-			#	print("Deu ruim no body")
+			if(len(result.getResponse()) != len(self.initial_result.getResponse())):
+				print("The response body has different length \n")
 
 	def sendNewRequests(self, requestInfo, i, responseInfo):
+
+		try:
+
+			body = self.control_request.getRequest()[self.initial_request.getBodyOffset():]
+
+		except:
+			print("tchau querida")
 
 		m = requestInfo.getMethod() 
 
@@ -119,16 +117,10 @@ class BurpExtender(IBurpExtender, IHttpRequestResponse, IHttpService, IHttpListe
 							content_type = k.split()[1]
 							newRequest.append("Content-Type: " + content_type)
 
-				# body = i.getRequest()[control.getBodyOffset():]
-				# print(self.helpers.bytesToString(body))
-				# print("\n\n")
-				# newRequest.replace(m, "POST")
-
 			except:
 				print("Deu ruim men")
 
 		else:
-			# newRequest = i.getRequest()
 			newRequest = self.helpers.bytesToString(i.getRequest()).split("\r\n")
 			# Descobrir pq tem dois espacos a mais nos headers
 			newRequest.pop()
@@ -137,22 +129,36 @@ class BurpExtender(IBurpExtender, IHttpRequestResponse, IHttpService, IHttpListe
 
 		initial_headers = newRequest
 
+		try:
+			new_request = self.helpers.buildHttpMessage(initial_headers, None)
+			self.initial_result = self._callbacks.makeHttpRequest(i.getHttpService(), new_request)
+			self.initial_request = self.helpers.analyzeRequest(self.initial_result.getRequest())
+			self.initial_response = self.helpers.analyzeResponse(self.initial_result.getResponse())
+
+		except:
+			print("foi nao")
+
 		for header in self.headers:
 
 			for method in self.methods:
 
 				initial_headers.append(header + ": " + method)
+				initial_headers.append("")
+				initial_headers.append(self.helpers.bytesToString(body))
+				# print(initial_headers)
 				new_request = self.helpers.buildHttpMessage(initial_headers, None)
-				
-				try:
 
+				try:
 					result = self._callbacks.makeHttpRequest(i.getHttpService(), new_request)
+					# print(self.helpers.bytesToString(result.getRequest()))
 					self.analyze_response(result, method)
 
 				except:
 
 					print("Deu bronca com o " + header + ": " + method)
 				
+				initial_headers.pop()
+				initial_headers.pop()
 				initial_headers.pop()
 
 
@@ -175,7 +181,7 @@ class BurpExtender(IBurpExtender, IHttpRequestResponse, IHttpService, IHttpListe
 		self.context = invocation
 		
 		menuList = ArrayList()
-		menuItem = JMenuItem("Enviar para o Method Overrider", actionPerformed=self.getRequest)
+		menuItem = JMenuItem("Send to Method Overrider", actionPerformed=self.getRequest)
 		menuList.add(menuItem)
 		
 		return menuList			
