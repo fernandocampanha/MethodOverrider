@@ -9,8 +9,10 @@ from burp import IHttpListener
 from burp import ITab
 from javax import swing
 from java.awt import BorderLayout
+from burp import IParameter
+from burp import IResponseVariations
 
-class BurpExtender(IBurpExtender, IHttpRequestResponse, IHttpService, IHttpListener, ITab):
+class BurpExtender(IBurpExtender, IHttpRequestResponse, IHttpService, IHttpListener, ITab, IParameter, IResponseVariations):
 
 	def registerExtenderCallbacks(self, callbacks):
 
@@ -28,6 +30,8 @@ class BurpExtender(IBurpExtender, IHttpRequestResponse, IHttpService, IHttpListe
 		# self.status = [200, 201, 301, 302, 307, 308, 501]
 
 		self.targets = []
+
+		self.results = []
 
 		callbacks.setExtensionName("MethodOverrider")
 		
@@ -60,38 +64,85 @@ class BurpExtender(IBurpExtender, IHttpRequestResponse, IHttpService, IHttpListe
 					self.control_request = self._callbacks.makeHttpRequest(messageInfo.getHttpService(), messageInfo.getRequest())
 					self.initial_request = self.helpers.analyzeRequest(messageInfo.getHttpService(), self.control_request.getRequest())
 					self.initial_response = self.helpers.analyzeResponse(self.control_request.getResponse())
-
+										
 					thread = Thread(target=self.sendNewRequests, args=(self.initial_request, messageInfo, self.initial_response))
 					thread.start()
 					thread.join()
 
 
 	def analyze_response(self, result, method):
+		responses = []
+		for i in self.results:
+			# responses.append()
+			print(i)
+		# print(responses)
+		# new_response = self.helpers.analyzeResponse(result.getResponse())
+		# status_code = new_response.getStatusCode()
 
-		new_response = self.helpers.analyzeResponse(result.getResponse())
-		status_code = new_response.getStatusCode()
+		# # Verify if the status code has changed
+		# if(status_code != self.initial_response.getStatusCode()):
 
-		# Verify if the status code has changed
-		if(status_code != self.initial_response.getStatusCode()):
-
-			if(status_code in self.status):
-						
-				print(str(status_code) + " for using " + method + " method")
+		# 	if(status_code in self.status):
+		# 		try:
+		# 			# print("novo: " + str(status_code) + "original: " + str(self.initial_response.getStatusCode()))
+		# 			self.results.append(str(status_code) + " for using " + method + " method")				
+		# 		except:
+		# 			print("Foi nao")
+		# #		print(str(status_code) + " for using " + method + " method")
 
 
 		# Verify if the size of response has changed
 
-			if(len(result.getResponse()) != len(self.initial_result.getResponse())):
-				print("The response body has different length \n")
+		#	if(len(result.getResponse()) != len(self.initial_result.getResponse())):
+		#		print("The response body has different length \n")
+
+	def sendWithHeaders(self, i, body):
+
+		for header in self.headers:
+
+			for method in self.methods:
+
+				self.initial_headers.append(header + ": " + method)				
+				self.initial_headers.append("")				
+				self.initial_headers.append(self.helpers.bytesToString(body))
+				new_request = self.helpers.buildHttpMessage(self.initial_headers, None)
+
+				try:
+					result = self._callbacks.makeHttpRequest(i.getHttpService(), new_request)
+					self.results.append(result.getResponse())
+					# self.analyze_response(result, method)
+
+				except:
+
+					print("Deu bronca com o " + header + ": " + method)
+				
+				self.initial_headers.pop()
+				self.initial_headers.pop()
+				self.initial_headers.pop()
+
+	def sendWithParameter(self, i, body):
+		initial_request = self.helpers.analyzeRequest(i.getRequest())
+		params = initial_request.getParameters()
+
+		for param in self.parameters:
+			for method in self.methods:
+				new_param = self.helpers.buildParameter(param, method, IParameter.PARAM_URL)
+				new_request = self.helpers.addParameter(i.getRequest(), new_param)
+
+			 	try:
+					result = self._callbacks.makeHttpRequest(i.getHttpService(), new_request)
+					# self.results.append(result.getResponse())
+					print(self.helpers.bytesToString(result.getResponse()))
+					# self.analyze_response(result, method)
+
+				except:
+
+					print("Deu bronca com o " + header + ": " + method)
+				
 
 	def sendNewRequests(self, requestInfo, i, responseInfo):
 
-		try:
-
-			body = self.control_request.getRequest()[self.initial_request.getBodyOffset():]
-
-		except:
-			print("tchau querida")
+		body = self.control_request.getRequest()[self.initial_request.getBodyOffset():]
 
 		m = requestInfo.getMethod() 
 
@@ -127,10 +178,10 @@ class BurpExtender(IBurpExtender, IHttpRequestResponse, IHttpService, IHttpListe
 			newRequest.pop()
 			# print(newRequest)
 
-		initial_headers = newRequest
+		self.initial_headers = newRequest
 
 		try:
-			new_request = self.helpers.buildHttpMessage(initial_headers, None)
+			new_request = self.helpers.buildHttpMessage(self.initial_headers, None)
 			self.initial_result = self._callbacks.makeHttpRequest(i.getHttpService(), new_request)
 			self.initial_request = self.helpers.analyzeRequest(self.initial_result.getRequest())
 			self.initial_response = self.helpers.analyzeResponse(self.initial_result.getResponse())
@@ -138,28 +189,14 @@ class BurpExtender(IBurpExtender, IHttpRequestResponse, IHttpService, IHttpListe
 		except:
 			print("foi nao")
 
-		for header in self.headers:
+		self.sendWithHeaders(i, body)
+		# Just call the sendWithParameter if the header results are empty
+		if(len(self.results) == 0):
+			self.results = []
+			self.sendWithParameter(i, body)	
 
-			for method in self.methods:
-
-				initial_headers.append(header + ": " + method)
-				initial_headers.append("")
-				initial_headers.append(self.helpers.bytesToString(body))
-				# print(initial_headers)
-				new_request = self.helpers.buildHttpMessage(initial_headers, None)
-
-				try:
-					result = self._callbacks.makeHttpRequest(i.getHttpService(), new_request)
-					# print(self.helpers.bytesToString(result.getRequest()))
-					self.analyze_response(result, method)
-
-				except:
-
-					print("Deu bronca com o " + header + ": " + method)
-				
-				initial_headers.pop()
-				initial_headers.pop()
-				initial_headers.pop()
+		print("The results are:\n" + str(self.results))
+		self.results = []
 
 
 	def getRequest(self, event):
