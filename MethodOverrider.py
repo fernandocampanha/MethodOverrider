@@ -1,19 +1,11 @@
 from burp import IBurpExtender 
-from burp import IHttpRequestResponse
-from burp import IContextMenuFactory
-from burp import IContextMenuInvocation
-from javax.swing import (JPanel, JSplitPane, JList, JTextPane, JScrollPane, ListSelectionModel, JLabel, JTabbedPane, JEditorPane)
 from burp import IHttpService
 from threading import Thread
 from burp import IHttpListener
-from burp import ITab
-from javax import swing
-from java.awt import BorderLayout
 from burp import IParameter
-from javax.swing.text import DefaultStyledDocument
 from java.util import ArrayList
 
-class BurpExtender(IBurpExtender, IHttpRequestResponse, IHttpService, IHttpListener, ITab, IParameter):
+class BurpExtender(IBurpExtender, IHttpListener):
 
 	def registerExtenderCallbacks(self, callbacks):
 
@@ -40,8 +32,6 @@ class BurpExtender(IBurpExtender, IHttpRequestResponse, IHttpService, IHttpListe
 		callbacks.setExtensionName("MethodOverrider")
 		
 		self.helpers = callbacks.getHelpers()
-
-		callbacks.registerContextMenuFactory(self.createMenuItems)
 
 		callbacks.registerHttpListener(self)
 
@@ -87,13 +77,11 @@ class BurpExtender(IBurpExtender, IHttpRequestResponse, IHttpService, IHttpListe
 						print("The page '" + result.getHttpService().getProtocol() + "://" + result.getHttpService().getHost() + 
 							":" + str(result.getHttpService().getPort()) + path + "' might have the method override technique enabled by using the header '" + name + ": " + method + "'")
 					elif(self.override_type == 1):
-						print("The page " + result.getHttpService().getProtocol() + "://" + result.getHttpService().getHost() + 
-							":" + str(result.getHttpService().getPort()) + path + " might have the method override technique enabled by using the parameter '" + name + ": " + method + "'")
+						if(len(result.getResponse()) != len(self.initial_result.getResponse())):
+							print("The page " + result.getHttpService().getProtocol() + "://" + result.getHttpService().getHost() + 
+								":" + str(result.getHttpService().getPort()) + path + " might have the method override technique enabled")
 				except:
-					print("Foi nao")
-
-			if(len(result.getResponse()) != len(self.initial_result.getResponse())):
-				print("The response body has different length \n")
+					print("Something went wrong while trying to analyze the response")
 
 			self._callbacks.issueAlert("Possible Http Method Override detected")
 
@@ -135,11 +123,12 @@ class BurpExtender(IBurpExtender, IHttpRequestResponse, IHttpService, IHttpListe
 
 			 	try:
 					result = self._callbacks.makeHttpRequest(i.getHttpService(), new_request)
+					
 					self.analyze_response(result, param, method)
 
 				except:
 
-					print("Deu bronca com o " + header + ": " + method)
+					print("Something went wrong with " + header + ": " + method)
 				
 
 	def sendNewRequests(self, requestInfo, i, responseInfo):
@@ -171,7 +160,7 @@ class BurpExtender(IBurpExtender, IHttpRequestResponse, IHttpService, IHttpListe
 							newRequest.append("Content-Type: " + content_type)
 
 			except:
-				print("Deu ruim men")
+				print("Something went wrong while trying to change the request method")
 
 		else:
 			newRequest = self.helpers.bytesToString(i.getRequest()).split("\r\n")
@@ -188,34 +177,12 @@ class BurpExtender(IBurpExtender, IHttpRequestResponse, IHttpService, IHttpListe
 			self.initial_response = self.helpers.analyzeResponse(self.initial_result.getResponse())
 
 		except:
-			print("foi nao")
+			print("Something went wrong while making the request")
 
 		self.sendWithHeaders(i, body)
 
 		# Just call the sendWithParameter if the header results are empty
 		if(self.check == False):
-			self.sendWithParameter(i, body)	
+			self.sendWithParameter(i, body)		
 
-	def getRequest(self, event):
-		
-		item = self.context.getSelectedMessages()
-		
-		for i in item:
-						
-			self.control_request = self._callbacks.makeHttpRequest(i.getHttpService(), i.getRequest())
-			self.initial_request = self.helpers.analyzeRequest(self.control_request.getRequest())
-			self.initial_response = self.helpers.analyzeResponse(self.control_request.getResponse())
-
-			thread = Thread(target=self.sendNewRequests, args=(self.initial_request, messageInfo, self.initial_response))
-			thread.start()
-			thread.join()
-
-	def createMenuItems(self, invocation):
-		
-		self.context = invocation
-		
-		menuList = ArrayList()
-		menuItem = JMenuItem("Send to Method Overrider", actionPerformed=self.getRequest)
-		menuList.add(menuItem)
-		
-		return menuList			
+		self.check = False
