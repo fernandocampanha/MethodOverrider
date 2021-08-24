@@ -105,7 +105,7 @@ class BurpExtender(IBurpExtender, IHttpListener):
 
 				except:
 
-					print("Deu bronca com o " + header + ": " + method)
+					print("Something went wrong with " + header + ": " + method)
 				
 				self.initial_headers.pop()
 				self.initial_headers.pop()
@@ -139,8 +139,6 @@ class BurpExtender(IBurpExtender, IHttpListener):
 
 		if(m == "GET"):
 			newRequest = self.helpers.bytesToString(self.helpers.toggleRequestMethod(i.getRequest())).split("\r\n")
-			newRequest.pop()
-			newRequest.pop()
 
 		elif(m != "POST"):
 			try:
@@ -164,9 +162,9 @@ class BurpExtender(IBurpExtender, IHttpListener):
 
 		else:
 			newRequest = self.helpers.bytesToString(i.getRequest()).split("\r\n")
-			# Descobrir pq tem dois espacos a mais nos headers
-			newRequest.pop()
-			newRequest.pop()
+		
+		newRequest.pop()
+		newRequest.pop()
 
 		self.initial_headers = newRequest
 
