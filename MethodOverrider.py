@@ -2,10 +2,12 @@ from burp import IBurpExtender
 from burp import IHttpService
 from threading import Thread
 from burp import IHttpListener
+from burp import IProxyListener
 from burp import IParameter
 from java.util import ArrayList
+from re import search
 
-class BurpExtender(IBurpExtender, IHttpListener):
+class BurpExtender(IBurpExtender, IHttpListener, IProxyListener):
 
 	def registerExtenderCallbacks(self, callbacks):
 
@@ -35,10 +37,12 @@ class BurpExtender(IBurpExtender, IHttpListener):
 
 		callbacks.registerHttpListener(self)
 
+		callbacks.registerProxyListener(self)
+
 		return 
 
 	def processHttpMessage(self, toolFlag, messageIsRequest, messageInfo):
-		
+
 		if(messageIsRequest):
 
 			path = str(self.helpers.analyzeRequest(messageInfo.getRequest()).getHeaders()[0].split()[1])
@@ -59,6 +63,29 @@ class BurpExtender(IBurpExtender, IHttpListener):
 					thread.start()
 					thread.join()
 
+	def processProxyMessage(self, messageIsRequest, message):
+		has = False
+		if(messageIsRequest):
+			request = self.helpers.bytesToString(message.getMessageInfo().getRequest())
+			result = message.getMessageInfo()
+			path = str(self.helpers.analyzeRequest(result.getRequest()).getHeaders()[0].split()[1])
+			for i in self.parameters:
+				if(i in request):
+					print("The page '" + result.getHttpService().getProtocol() + "://" + result.getHttpService().getHost() + 
+								":" + str(result.getHttpService().getPort()) + path + "' might have the method override technique enabled")
+					has = True
+					break
+			if(has == False):
+				hdr = self.helpers.bytesToString(message.getMessageInfo().getRequest()).split("\r\n")
+				for i in self.headers:
+					for j in hdr:
+						if(j != '' and i in j.split()[0]):
+					 		print("The page '" + result.getHttpService().getProtocol() + "://" + result.getHttpService().getHost() + 
+								":" + str(result.getHttpService().getPort()) + path + "' might have the method override technique enabled by using the header '" + i + ": " + j.split()[1] + "'")
+					 		has = True
+					 		break
+		if(has == True):
+			self._callbacks.issueAlert("Possible Http Method Override detected")
 
 	def analyze_response(self, result, name, method):
 
@@ -78,8 +105,8 @@ class BurpExtender(IBurpExtender, IHttpListener):
 							":" + str(result.getHttpService().getPort()) + path + "' might have the method override technique enabled by using the header '" + name + ": " + method + "'")
 					elif(self.override_type == 1):
 						if(len(result.getResponse()) != len(self.initial_result.getResponse())):
-							print("The page " + result.getHttpService().getProtocol() + "://" + result.getHttpService().getHost() + 
-								":" + str(result.getHttpService().getPort()) + path + " might have the method override technique enabled")
+							print("The page '" + result.getHttpService().getProtocol() + "://" + result.getHttpService().getHost() + 
+								":" + str(result.getHttpService().getPort()) + path + "'' might have the method override technique enabled")
 				except:
 					print("Something went wrong while trying to analyze the response")
 
@@ -184,3 +211,4 @@ class BurpExtender(IBurpExtender, IHttpListener):
 			self.sendWithParameter(i, body)		
 
 		self.check = False
+		
