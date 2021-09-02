@@ -1,11 +1,11 @@
 from burp import IBurpExtender 
 from burp import IHttpService
-from threading import Thread
+from threading import Thread, Lock
 from burp import IHttpListener
 from burp import IProxyListener
 from burp import IParameter
 from java.util import ArrayList
-from re import search
+from time import sleep
 
 class BurpExtender(IBurpExtender, IHttpListener, IProxyListener):
 
@@ -31,6 +31,10 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener):
 
 		self.override_type = -1
 
+		self.busy = False
+
+		self.threads = []
+
 		callbacks.setExtensionName("MethodOverrider")
 		
 		self.helpers = callbacks.getHelpers()
@@ -54,15 +58,13 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener):
 			else:		
 				self.targets.append(val)
 				if(toolFlag == self._callbacks.TOOL_REPEATER):
-			
-					self.control_request = self._callbacks.makeHttpRequest(messageInfo.getHttpService(), messageInfo.getRequest())
-					self.initial_request = self.helpers.analyzeRequest(messageInfo.getHttpService(), self.control_request.getRequest())
-					self.initial_response = self.helpers.analyzeResponse(self.control_request.getResponse())
-										
-					thread = Thread(target=self.sendNewRequests, args=(self.initial_request, messageInfo, self.initial_response))
-					thread.start()
-					thread.join()
 
+					self.threads.append(messageInfo)
+
+					thread = Thread(target=self.freeRepeater)
+					thread.daemon = True
+					thread.start()
+			
 	def processProxyMessage(self, messageIsRequest, message):
 		has = False
 		if(messageIsRequest):
@@ -87,6 +89,24 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener):
 		if(has == True):
 			self._callbacks.issueAlert("Possible Http Method Override detected")
 
+	def freeRepeater(self):
+
+		if(self.busy == False):
+			
+			self.busy = True
+
+			while(len(self.threads) > 0):
+				
+				messageInfo = self.threads[0]
+				self.control_request = self._callbacks.makeHttpRequest(messageInfo.getHttpService(), messageInfo.getRequest())
+				self.initial_request = self.helpers.analyzeRequest(messageInfo.getHttpService(), self.control_request.getRequest())
+				self.initial_response = self.helpers.analyzeResponse(self.control_request.getResponse())
+				self.sendNewRequests(self.initial_request, messageInfo, self.initial_response)
+				self.threads.pop(0)
+			
+		else:
+			freeRepeater()
+
 	def analyze_response(self, result, name, method):
 
 		new_response = self.helpers.analyzeResponse(result.getResponse())
@@ -98,6 +118,7 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener):
 			self.check  = True
 
 			if(status_code in self.status):
+
 				try:
 					path = str(self.helpers.analyzeRequest(result.getRequest()).getHeaders()[0].split()[1])
 					if(self.override_type == 0):
@@ -106,13 +127,16 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener):
 					elif(self.override_type == 1):
 						if(len(result.getResponse()) != len(self.initial_result.getResponse())):
 							print("The page '" + result.getHttpService().getProtocol() + "://" + result.getHttpService().getHost() + 
-								":" + str(result.getHttpService().getPort()) + path + "'' might have the method override technique enabled")
+								":" + str(result.getHttpService().getPort()) + path + "' might have the method override technique enabled")
+
+					print("Remember to test using other HTTP methods!\n")
+					self._callbacks.issueAlert("Possible Http Method Override detected")
+					return True
 				except:
 					print("Something went wrong while trying to analyze the response")
 
-			self._callbacks.issueAlert("Possible Http Method Override detected")
-
-
+		return False
+	
 	def sendWithHeaders(self, i, body):
 		self.override_type = 0
 
@@ -127,8 +151,10 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener):
 
 				try:
 
+					sleep(0.05)
 					result = self._callbacks.makeHttpRequest(i.getHttpService(), new_request)
-					self.analyze_response(result, header, method)
+					if(self.analyze_response(result, header, method) == True):
+						return
 
 				except:
 
@@ -149,9 +175,10 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener):
 				new_request = self.helpers.addParameter(i.getRequest(), new_param)
 
 			 	try:
+					sleep(0.05)
 					result = self._callbacks.makeHttpRequest(i.getHttpService(), new_request)
-					
-					self.analyze_response(result, param, method)
+					if(self.analyze_response(result, param, method) == True):
+						return
 
 				except:
 
@@ -211,4 +238,5 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener):
 			self.sendWithParameter(i, body)		
 
 		self.check = False
+		self.busy = False
 		
