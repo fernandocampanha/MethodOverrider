@@ -19,7 +19,7 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener):
 						'PURGE', 'PROPFIND', 'PROPPATCH', 'UNLOCK', 'REPORT', 'MKACTIVITY', 'CHECKOUT', 'MERGE',
 						'M-SEARCH', 'NOTIFY', 'SUBSCRIBE', 'UNSUBSCRIBE', 'PATCH', 'SEARCH', 'CONNECT']
 		
-		self.parameters = ['_method', 'method', 'X-Http-Method-Override', 'X-HTTP-Method', 'X-Method-Override']
+		self.parameters = ['_method', 'method', 'X-Http-Method-Override', 'X-HTTP-Method', 'X-Method-Override', 'httpMethod']
 
 		self.status = [200, 201, 301, 302, 307, 308, 400, 401, 403, 404, 405, 501]
 
@@ -68,24 +68,33 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener):
 	def processProxyMessage(self, messageIsRequest, message):
 		has = False
 		if(messageIsRequest):
-			request = self.helpers.bytesToString(message.getMessageInfo().getRequest())
-			result = message.getMessageInfo()
-			path = str(self.helpers.analyzeRequest(result.getRequest()).getHeaders()[0].split()[1])
-			for i in self.parameters:
-				if(i in request):
-					print("The page '" + result.getHttpService().getProtocol() + "://" + result.getHttpService().getHost() + 
-								":" + str(result.getHttpService().getPort()) + path + "' might have the method override technique enabled")
-					has = True
-					break
-			if(has == False):
-				hdr = self.helpers.bytesToString(message.getMessageInfo().getRequest()).split("\r\n")
-				for i in self.headers:
-					for j in hdr:
-						if(j != '' and i in j.split()[0]):
-					 		print("The page '" + result.getHttpService().getProtocol() + "://" + result.getHttpService().getHost() + 
-								":" + str(result.getHttpService().getPort()) + path + "' might have the method override technique enabled by using the header '" + i + ": " + j.split()[1] + "'")
-					 		has = True
-					 		break
+			path = str(self.helpers.analyzeRequest(message.getMessageInfo().getRequest()).getHeaders()[0].split()[1])
+			val = message.getMessageInfo().getHttpService().getProtocol() + "://" + message.getMessageInfo().getHttpService().getHost() + ":" + str(message.getMessageInfo().getHttpService().getPort()) + path
+
+			if(val in self.targets):
+				return
+			else:
+				self.targets.append(val)
+				request = self.helpers.bytesToString(message.getMessageInfo().getRequest())
+				result = message.getMessageInfo()
+				path = str(self.helpers.analyzeRequest(result.getRequest()).getHeaders()[0].split()[1])
+				params = self.helpers.analyzeRequest(result.getRequest()).getParameters()
+				for i in self.parameters:
+					for j in params:
+						if(i == j.getName()):
+							print("\nThe page '" + result.getHttpService().getProtocol() + "://" + result.getHttpService().getHost() + 
+									":" + str(result.getHttpService().getPort()) + path + "' might have the method override technique enabled by using the parameter '" + i + "'")
+							has = True
+							break
+				if(has == False):
+					hdr = self.helpers.bytesToString(message.getMessageInfo().getRequest()).split("\r\n")
+					for i in self.headers:
+						for j in hdr:
+							if(j != '' and i in j.split()[0]):
+						 		print("\nThe page '" + result.getHttpService().getProtocol() + "://" + result.getHttpService().getHost() + 
+									":" + str(result.getHttpService().getPort()) + path + "' might have the method override technique enabled by using the header '" + i + ": " + j.split()[1] + "'")
+						 		has = True
+						 		break
 		if(has == True):
 			self._callbacks.issueAlert("Possible Http Method Override detected")
 
@@ -122,11 +131,11 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener):
 				try:
 					path = str(self.helpers.analyzeRequest(result.getRequest()).getHeaders()[0].split()[1])
 					if(self.override_type == 0):
-						print("The page '" + result.getHttpService().getProtocol() + "://" + result.getHttpService().getHost() + 
+						print("\nThe page '" + result.getHttpService().getProtocol() + "://" + result.getHttpService().getHost() + 
 							":" + str(result.getHttpService().getPort()) + path + "' might have the method override technique enabled by using the header '" + name + ": " + method + "'")
 					elif(self.override_type == 1):
 						if(len(result.getResponse()) != len(self.initial_result.getResponse())):
-							print("The page '" + result.getHttpService().getProtocol() + "://" + result.getHttpService().getHost() + 
+							print("\nThe page '" + result.getHttpService().getProtocol() + "://" + result.getHttpService().getHost() + 
 								":" + str(result.getHttpService().getPort()) + path + "' might have the method override technique enabled")
 
 					print("Remember to test using other HTTP methods!\n")
