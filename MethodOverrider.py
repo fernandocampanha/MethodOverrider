@@ -1,10 +1,9 @@
 from burp import IBurpExtender 
 from burp import IHttpService
-from threading import Thread, Lock
+from threading import Thread
 from burp import IHttpListener
 from burp import IProxyListener
 from burp import IParameter
-from java.util import ArrayList
 from time import sleep
 
 class BurpExtender(IBurpExtender, IHttpListener, IProxyListener):
