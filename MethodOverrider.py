@@ -12,13 +12,13 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener):
 
 		self._callbacks = callbacks
 
-		self.headers = ['X-Http-Method-Override', 'X-HTTP-Method', 'X-Method-Override']
+		self.headers = ['X-Http-Method-Override', 'X-HTTP-Method-Override', 'X-Http-Method', 'X-HTTP-Method', 'X-Method-Override']
 		
 		self.methods = ['GET', 'POST', 'PUT', 'HEAD','DELETE','OPTIONS', 'TRACE', 'COPY', 'LOCK', 'MKCOL', 'MOVE',
 						'PURGE', 'PROPFIND', 'PROPPATCH', 'UNLOCK', 'REPORT', 'MKACTIVITY', 'CHECKOUT', 'MERGE',
 						'M-SEARCH', 'NOTIFY', 'SUBSCRIBE', 'UNSUBSCRIBE', 'PATCH', 'SEARCH', 'CONNECT']
 		
-		self.parameters = ['_method', 'method', 'X-Http-Method-Override', 'X-HTTP-Method', 'X-Method-Override', 'httpMethod']
+		self.parameters = ['_method', 'method', 'X-Http-Method-Override', 'X-HTTP-Method', 'X-Method-Override', 'httpMethod', '_HttpMethod']
 
 		self.status = [200, 201, 301, 302, 307, 308, 400, 401, 403, 404, 405, 501]
 
@@ -78,6 +78,8 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener):
 				result = message.getMessageInfo()
 				path = str(self.helpers.analyzeRequest(result.getRequest()).getHeaders()[0].split()[1])
 				params = self.helpers.analyzeRequest(result.getRequest()).getParameters()
+				
+				# Check the parameters
 				for i in self.parameters:
 					for j in params:
 						if(i == j.getName()):
@@ -85,6 +87,8 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener):
 									":" + str(result.getHttpService().getPort()) + path + "' might have the method override technique enabled by using the parameter '" + i + "'")
 							has = True
 							break
+
+				# Check the request headers
 				if(has == False):
 					hdr = self.helpers.bytesToString(message.getMessageInfo().getRequest()).split("\r\n")
 					for i in self.headers:
@@ -94,6 +98,27 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener):
 									":" + str(result.getHttpService().getPort()) + path + "' might have the method override technique enabled by using the header '" + i + ": " + j.split()[1] + "'")
 						 		has = True
 						 		break
+
+		# Check the response headers
+		else:
+			data = []
+			if(has == False):
+				result = message.getMessageInfo()
+				hdr = self.helpers.analyzeResponse(result.getResponse()).getHeaders()
+				for i in hdr:
+					if("Access-Control-Allow-Headers" in i or "Vary" in i):
+						data = i.split()
+						break
+				if(len(data) == 0):
+					return
+				for j in data:
+					for i in self.headers:
+						if(i in j):
+							print("\nThe page '" + result.getHttpService().getProtocol() + "://" + result.getHttpService().getHost() + ":" + 
+								str(result.getHttpService().getPort()) + "' might have the method override technique enabled by using the header '" + i + "' detected in the response of the page")
+							has = True
+							break
+
 		if(has == True):
 			self._callbacks.issueAlert("Possible Http Method Override detected")
 
