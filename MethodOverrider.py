@@ -4,9 +4,12 @@ from threading import Thread
 from burp import IHttpListener
 from burp import IProxyListener
 from burp import IParameter
+from burp import IContextMenuFactory
 from time import sleep
+from java.util import ArrayList
+from javax.swing import JMenuItem
 
-class BurpExtender(IBurpExtender, IHttpListener, IProxyListener):
+class BurpExtender(IBurpExtender, IHttpListener, IProxyListener, IContextMenuFactory):
 
 	def registerExtenderCallbacks(self, callbacks):
 
@@ -14,9 +17,7 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener):
 
 		self.headers = ['X-Http-Method-Override', 'X-HTTP-Method-Override', 'X-Http-Method', 'X-HTTP-Method', 'X-Method-Override']
 		
-		self.methods = ['GET', 'POST', 'PUT', 'HEAD','DELETE','OPTIONS', 'TRACE', 'COPY', 'LOCK', 'MKCOL', 'MOVE',
-						'PURGE', 'PROPFIND', 'PROPPATCH', 'UNLOCK', 'REPORT', 'MKACTIVITY', 'CHECKOUT', 'MERGE',
-						'M-SEARCH', 'NOTIFY', 'SUBSCRIBE', 'UNSUBSCRIBE', 'PATCH', 'SEARCH', 'CONNECT']
+		self.methods = ['GET', 'POST', 'PUT', 'HEAD','OPTIONS', 'TRACE', 'PURGE', 'PATCH', 'CONNECT']
 		
 		self.parameters = ['_method', 'method', 'X-Http-Method-Override', 'X-HTTP-Method', 'X-Method-Override', 'httpMethod', '_HttpMethod']
 
@@ -42,6 +43,8 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener):
 
 		callbacks.registerProxyListener(self)
 
+		callbacks.registerContextMenuFactory(self.createMenuItems)
+		
 		return 
 
 	def processHttpMessage(self, toolFlag, messageIsRequest, messageInfo):
@@ -56,13 +59,13 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener):
 
 			else:		
 				self.targets.append(val)
-				if(toolFlag == self._callbacks.TOOL_REPEATER):
-
+				if(toolFlag == self._callbacks.TOOL_REPEATER or toolFlag == self._callbacks.TOOL_PROXY):
 					self.threads.append(messageInfo)
 
 					thread = Thread(target=self.freeRepeater)
 					thread.daemon = True
 					thread.start()
+
 			
 	def processProxyMessage(self, messageIsRequest, message):
 		has = False
@@ -80,8 +83,8 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener):
 				params = self.helpers.analyzeRequest(result.getRequest()).getParameters()
 				
 				# Check the parameters
-				for i in self.parameters:
-					for j in params:
+				for j in params:
+					for i in self.parameters:
 						if(i == j.getName()):
 							print("\nThe page '" + result.getHttpService().getProtocol() + "://" + result.getHttpService().getHost() + 
 									":" + str(result.getHttpService().getPort()) + path + "' might have the method override technique enabled by using the parameter '" + i + "'")
@@ -91,8 +94,8 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener):
 				# Check the request headers
 				if(has == False):
 					hdr = self.helpers.bytesToString(message.getMessageInfo().getRequest()).split("\r\n")
-					for i in self.headers:
-						for j in hdr:
+					for j in hdr:
+						for i in self.headers:
 							if(j != '' and i in j.split()[0]):
 						 		print("\nThe page '" + result.getHttpService().getProtocol() + "://" + result.getHttpService().getHost() + 
 									":" + str(result.getHttpService().getPort()) + path + "' might have the method override technique enabled by using the header '" + i + ": " + j.split()[1] + "'")
@@ -162,7 +165,7 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener):
 							print("\nThe page '" + result.getHttpService().getProtocol() + "://" + result.getHttpService().getHost() + 
 								":" + str(result.getHttpService().getPort()) + path + "' might have the method override technique enabled")
 
-					print("Remember to test using other HTTP methods!\n")
+					print("Remember to test using other HTTP methods!")
 					self._callbacks.issueAlert("Possible Http Method Override detected")
 					return True
 				except:
@@ -272,4 +275,15 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener):
 
 		self.check = False
 		self.busy = False
-		
+
+	def doActiveScan(self, event):
+		request = self.context.getSelectedMessages()
+		for i in request:
+			self.processHttpMessage(self.context.getToolFlag(), True, i)
+
+	def createMenuItems(self, invocation):
+		self.context = invocation
+		menuList = ArrayList()
+		menuItem = JMenuItem("Active scan", actionPerformed=self.doActiveScan)
+		menuList.add(menuItem)
+		return menuList
