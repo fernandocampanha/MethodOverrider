@@ -49,23 +49,12 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener, IContextMenuFac
 
 	def processHttpMessage(self, toolFlag, messageIsRequest, messageInfo):
 
-		if(messageIsRequest):
+		if(messageIsRequest and toolFlag == self._callbacks.TOOL_PROXY):
+			self.threads.append(messageInfo)
 
-			path = str(self.helpers.analyzeRequest(messageInfo.getRequest()).getHeaders()[0].split()[1])
-			val = messageInfo.getHttpService().getProtocol() + "://" + messageInfo.getHttpService().getHost() + ":" + str(messageInfo.getHttpService().getPort()) + path
-
-			if(val in self.targets):
-				return
-
-			else:		
-				self.targets.append(val)
-				if(toolFlag == self._callbacks.TOOL_REPEATER or toolFlag == self._callbacks.TOOL_PROXY):
-					self.threads.append(messageInfo)
-
-					thread = Thread(target=self.freeRepeater)
-					thread.daemon = True
-					thread.start()
-
+			thread = Thread(target=self.freeRepeater)
+			thread.daemon = True
+			thread.start()
 			
 	def processProxyMessage(self, messageIsRequest, message):
 		has = False
@@ -187,7 +176,7 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener, IContextMenuFac
 
 				try:
 
-					sleep(0.05)
+					# sleep(0.05)
 					result = self._callbacks.makeHttpRequest(i.getHttpService(), new_request)
 					if(self.analyze_response(result, header, method) == True):
 						return
@@ -211,7 +200,7 @@ class BurpExtender(IBurpExtender, IHttpListener, IProxyListener, IContextMenuFac
 				new_request = self.helpers.addParameter(i.getRequest(), new_param)
 
 			 	try:
-					sleep(0.05)
+					# sleep(0.05)
 					result = self._callbacks.makeHttpRequest(i.getHttpService(), new_request)
 					if(self.analyze_response(result, param, method) == True):
 						return
